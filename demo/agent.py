@@ -4,6 +4,11 @@ Implémente le Scope V1 (CLAUDE.md) avec la config de docs/demo-stack.md § 5.3.
 2 function tools : verify_patient_identity, complete_call.
 """
 
+# Force SSL to use macOS system trust store (Python.org Python 3.13 workaround).
+# Must be set before any network library is imported (livekit, openai, httpx).
+import truststore
+truststore.inject_into_ssl()
+
 import json
 import logging
 import os
