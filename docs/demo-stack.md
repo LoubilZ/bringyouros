@@ -233,7 +233,7 @@ Le Vapi Playbook définit 4 dimensions de persona et 3 niveaux d'intensité. App
 | Critère | Évaluation |
 |---------|------------|
 | **Voix françaises disponibles** | 7 voix FR dédiées (4 féminines, 3 masculines). |
-| **Voix recommandée** | **« Calm French Woman »** — `a8a1eb38-5f15-4c1d-8722-7ac0f329727d`. Description : « Soft and calm, suited for soothing conversations. » Match direct avec le profil persona (chaleur modérée, assertivité basse, pace posé). |
+| **Voix recommandée** | **Voice ID auditionnée** — `faa75703-00e3-4a57-9955-0703001e3231`. Voix retenue après audition Cartesia Playground (remplace « Calm French Woman » `a8a1eb38…`). |
 | **Alternative** | « Helpful French Lady » — `65b25c5d-ff07-4687-a04c-da2f43ef6fa9`. Plus dynamique, ton « customer support ». |
 | **Naturalité** | 4,7/5 en évaluation indépendante. Préféré à ElevenLabs Flash v2 par 61,4% des auditeurs en test aveugle (toutes langues confondues). |
 | **TTFB** | ✅ **~40-90ms** (inference seule) — **le plus rapide de tous les providers**. Sonic Turbo : ~40ms, Sonic Standard : ~90ms. |
@@ -249,7 +249,8 @@ Le Vapi Playbook définit 4 dimensions de persona et 3 niveaux d'intensité. App
 
 | Nom | Voice ID | Description | Match persona |
 |-----|----------|-------------|---------------|
-| Calm French Woman | `a8a1eb38-5f15-4c1d-8722-7ac0f329727d` | Douce et calme, conversations apaisantes | ✅ **Best match** |
+| ~~Calm French Woman~~ | ~~`a8a1eb38-5f15-4c1d-8722-7ac0f329727d`~~ | ~~Douce et calme, conversations apaisantes~~ | Remplacée après audition |
+| Voice ID auditionnée | `faa75703-00e3-4a57-9955-0703001e3231` | Voix retenue après audition Cartesia Playground | ✅ **Retenue** |
 | Helpful French Lady | `65b25c5d-ff07-4687-a04c-da2f43ef6fa9` | Serviable et enjouée, ton conversationnel | ⚠️ Trop dynamique ? |
 | French Narrator Lady | `8832a0b5-47b2-4751-bb22-6a8e2149303d` | Veloutée et neutre, style narration | ⚠️ Trop « lecture » |
 | French Conversational Lady | `a249eaff-1e96-4d2c-b23b-12efa4f66f41` | Registre conversationnel | ✅ Challenger |
@@ -344,7 +345,7 @@ Le Vapi Playbook définit 4 dimensions de persona et 3 niveaux d'intensité. App
 |-----------|--------|
 | Provider | Cartesia |
 | Modèle | `sonic-3` |
-| Voice ID | `a8a1eb38-5f15-4c1d-8722-7ac0f329727d` (Calm French Woman) |
+| Voice ID | `faa75703-00e3-4a57-9955-0703001e3231` (Voice ID auditionnée — remplace Calm French Woman après audition Playground) |
 | Langue | `fr` |
 | Speed | `1.0` (ajuster après tests — potentiellement `0.95` pour un rythme plus posé) |
 
@@ -354,7 +355,7 @@ Justification :
 
 2. **« Calm French Woman » aligne les 4 dimensions Vapi** : warmth modérée-chaude (« soft and calm »), formality professionnelle (pas de slang), pace posé (« soothing conversations »), assertivité basse (pas de ton directif). C'est le match le plus direct avec le profil persona DentalOS.
 
-3. **LiveKit Inference** : `inference.TTS("cartesia/sonic-3", voice="a8a1eb38-5f15-4c1d-8722-7ac0f329727d", language="fr")`. Zéro clé API séparée, billing unifié LiveKit. Plus simple pour la démo.
+3. **LiveKit Inference** : `inference.TTS("cartesia/sonic-3", voice="faa75703-00e3-4a57-9955-0703001e3231", language="fr")`. Zéro clé API séparée, billing unifié LiveKit. Plus simple pour la démo.
 
 4. **Cohérence stack** : Deepgram STT + Cartesia TTS est la combinaison la plus utilisée dans la communauté LiveKit pour les voice agents téléphoniques (confirmé forum).
 
@@ -397,7 +398,7 @@ from livekit.agents import inference
 
 tts = inference.TTS(
     "cartesia/sonic-3",
-    voice="a8a1eb38-5f15-4c1d-8722-7ac0f329727d",  # Calm French Woman
+    voice="faa75703-00e3-4a57-9955-0703001e3231",  # Voice ID auditionnée
     language="fr",
 )
 
@@ -1152,7 +1153,7 @@ llm = inference.LLM(
 # --- TTS (section 2) ---
 tts = inference.TTS(
     "cartesia/sonic-3",
-    voice="a8a1eb38-5f15-4c1d-8722-7ac0f329727d",  # Calm French Woman
+    voice="faa75703-00e3-4a57-9955-0703001e3231",  # Voice ID auditionnée
     language="fr",
 )
 
