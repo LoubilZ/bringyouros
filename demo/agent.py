@@ -25,6 +25,7 @@ from livekit.agents import (
 )
 from livekit.agents.llm import function_tool
 from livekit.plugins import elevenlabs, silero
+from livekit.plugins.elevenlabs import VoiceSettings
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 from mock_backend import verify_patient_identity as _verify_patient
@@ -331,6 +332,13 @@ async def entrypoint(ctx: JobContext) -> None:
             model="eleven_flash_v2_5",
             voice_id=ELEVENLABS_VOICE_ID,
             language="fr",
+            voice_settings=VoiceSettings(
+                stability=0.5,
+                similarity_boost=0.75,
+                style=0.0,
+                speed=1.02,
+                use_speaker_boost=True,
+            ),
         ),
         # --- VAD (§ 4) ---
         vad=ctx.proc.userdata["vad"],
