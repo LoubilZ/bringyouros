@@ -1,0 +1,319 @@
+═══════════════════════════════════════════════════════════════════════
+  DENTALOS VOICE AGENT — GUIDE DES FICHIERS DU PROJET
+═══════════════════════════════════════════════════════════════════════
+
+Ce fichier t'explique à quoi sert chaque document du projet et
+comment t'en servir. À lire une fois pour comprendre la structure.
+
+
+───────────────────────────────────────────────────────────────────────
+  STRUCTURE DU DOSSIER
+───────────────────────────────────────────────────────────────────────
+
+dental-voice-agent/
+├── CLAUDE.md          ← Le brief permanent du projet
+├── README.md          ← Présentation rapide du projet
+├── GUIDE.txt          ← Ce fichier (explication des autres)
+├── .gitignore         ← Ce qui n'est pas committé sur git
+└── docs/
+    ├── decisions.md       ← Journal de toutes les décisions prises
+    ├── v1-scope.md        ← Spec détaillée de ce qu'on construit en v1
+    ├── dpa-registry.md    ← Registre RGPD des sous-traitants/vendors
+    └── runbooks/          ← Procédures opérationnelles (à venir)
+
+
+───────────────────────────────────────────────────────────────────────
+  CLAUDE.md — LE BRIEF PERMANENT
+───────────────────────────────────────────────────────────────────────
+
+QU'EST-CE QUE C'EST ?
+Un fichier que Claude Code lit AUTOMATIQUEMENT au début de chaque
+session quand il est à la racine du dossier projet. C'est le brief
+qui dit à Claude Code comment travailler sur ce projet précis.
+
+QUAND LE LIRE ?
+Toi : une fois pour comprendre, puis quand tu veux ajuster une règle.
+Claude Code : à chaque session, automatiquement.
+
+QUAND LE METTRE À JOUR ?
+Quand une règle structurelle change (scope v1, compliance, conventions).
+Pas pour des micro-décisions du jour (qui vont dans decisions.md).
+
+
+SECTIONS DE CLAUDE.md, EXPLIQUÉES :
+
+
+1. MISSION
+   À quoi sert ce projet en une description courte.
+   Use case prioritaire v1 = suivi de devis non retournés outbound.
+   Volume cible.
+
+2. STRATEGIC GOAL
+   Le pourquoi business + les métriques de succès.
+   - Métrique principale = ce qu'on optimise (taux de conversion devis)
+   - Secondary metrics = ce qu'on surveille mais qu'on ne sacrifie pas
+   - Guardrail metrics = ce qu'on minimise absolument (sécurité, qualité)
+   Sert à arbitrer si Claude Code propose une optimisation : "ça améliore
+   secondary, mais ça dégrade guardrail → on refuse".
+
+3. SCOPE V1
+   Le flow exact que l'agent doit exécuter, étape par étape numérotée.
+   1. Annonce
+   2. Vérification d'identité (nom, prénom, DOB + lookup backend)
+   3. Question mutuelle
+   4. Question intention
+   5. Si oui → collecte de disponibilités
+   6. Clôture + handoff
+   + ce que l'agent peut/ne peut pas faire.
+   C'est LA section que Claude Code consulte pour savoir quoi coder.
+
+4. OUT OF SCOPE V1
+   Tout ce qui est explicitement EXCLU de la v1.
+   Sert de barrage anti-scope-creep : si tu (ou Claude Code) propose
+   d'ajouter une feature, on relit cette section d'abord.
+
+5. NON-NEGOTIABLE SAFETY RULES
+   Ce que l'agent ne doit JAMAIS faire (santé) + protocole urgence.
+   Inclut maintenant des règles spécifiques au use case devis :
+   - pas de conseil sur le traitement
+   - pas d'estimation de remboursement mutuelle
+   - pas de pression commerciale
+   - ton consultatif, jamais vendeur
+
+6. COMPLIANCE — RGPD + HDS
+   Les contraintes légales non négociables (résidence UE, DPA, HDS).
+   Sert à filtrer les vendors candidats en session 1.
+
+7. DATA MINIMIZATION
+   Quels champs l'agent reçoit, collecte, et n'a PAS le droit de toucher.
+   Important : la justification de l'exception DOB (nécessaire pour
+   identification) avec ses safeguards (input-only, hashé, pas en logs).
+
+8. STACK
+   Volontairement TBD. À remplir en session 1 via le RAG.
+   Note importante sur le RAG LiveKit : si tu choisis autre chose que
+   LiveKit, tu perds 80% de la valeur de ton RAG (à pondérer).
+
+9. KNOWLEDGE BASE — search_livekit_kb
+   Mode d'emploi du tool MCP que Claude Code peut appeler pour fouiller
+   le RAG (docs LiveKit + forum + Vapi playbook). Avec patterns de
+   queries qui marchent bien.
+
+10. SOURCE HIERARCHY
+    Quoi croire en cas de contradiction entre sources :
+    1. Docs officielles vendor à jour
+    2. Docs légales/compliance vendor
+    3. Docs LiveKit via RAG
+    4. Forum LiveKit (debug seulement)
+    5. Vapi playbook (cadrage produit, pas pour valider une API ou loi)
+
+11. DECISION PROCESS
+    Le rituel à suivre AVANT toute décision structurante :
+    chercher RAG → vérifier docs → proposer A/B/C → recommander →
+    lister risques → attendre validation TOI → écrire decisions.md.
+
+12. DECISION LOG TEMPLATE
+    Le format à utiliser dans decisions.md pour chaque entrée.
+
+13. SESSION 1 GOAL
+    Définit ce qu'il faut produire avant d'écrire la moindre ligne
+    de code : decisions.md + v1-scope.md remplis.
+    Liste les critères pour considérer la session 1 comme finie.
+
+14. ARCHITECTURE PRINCIPLES
+    Règles d'archi générales (provider voix stateless, CallState backend,
+    CallLog dès le début, pas d'action autonome sensible, mocks isolés).
+
+15. RUNTIME RULES
+    Règles d'exécution (température 0.0, prompts versionnés, pas de PHI
+    dans les logs, pas de scope creep conversationnel).
+
+16. CODE STYLE
+    Conventions techniques (Python 3.11+, async, Pydantic, pytest,
+    redaction PHI obligatoire).
+
+17. REPO STRUCTURE (indicative)
+    Plan de structure du repo à terme. Indicative seulement : on ne
+    crée pas les fichiers avant que la session 1 soit validée.
+
+18. COMMUNICATION WITH ME
+    Comment Claude Code doit te parler (tutoiement, FR, concis,
+    expose les tradeoffs, demande validation, cite les sources).
+
+
+───────────────────────────────────────────────────────────────────────
+  README.md — PRÉSENTATION RAPIDE
+───────────────────────────────────────────────────────────────────────
+
+QU'EST-CE QUE C'EST ?
+Le fichier que les humains (collaborateurs, futur toi dans 6 mois)
+voient en premier en arrivant sur le repo. Présentation courte du
+projet et indication de l'état actuel.
+
+QUAND LE LIRE ?
+Quand quelqu'un découvre le projet pour la première fois.
+
+QUAND LE METTRE À JOUR ?
+- Quand le use case change (priorité v1)
+- Quand on passe d'une phase à une autre (Session 1 → Scaffold → Build)
+- Quand on a un mode d'emploi rapide à donner
+
+
+───────────────────────────────────────────────────────────────────────
+  docs/decisions.md — JOURNAL DES CHOIX
+───────────────────────────────────────────────────────────────────────
+
+QU'EST-CE QUE C'EST ?
+Un journal chronologique de toutes les décisions structurantes prises
+sur le projet. Une entrée par décision, format imposé par CLAUDE.md
+(Contexte / Options / Choix / Justification / Risques / Sources).
+
+QUAND L'ALIMENTER ?
+À chaque fois qu'on tranche un sujet structurant :
+- Choix d'un composant de stack (ex: STT, TTS, SIP provider)
+- Décision d'archi (ex: où vit le CallState ?)
+- Exclusion d'une feature
+- Threshold de scoping (ex: min_delay du turn detector)
+- Vendor compliance (ex: HDS choisi)
+
+POURQUOI ?
+- Tu peux retrouver POURQUOI un choix a été fait dans 6 mois
+- Tu peux justifier un choix à un client / auditeur RGPD
+- Tu peux re-questionner un choix avec le contexte d'origine
+- Claude Code peut le lire pour ne pas re-débattre des sujets tranchés
+
+EXEMPLE D'ENTRÉE :
+## 2026-05-01 — Choix du SIP provider
+**Contexte** : ...
+**Options considérées** : Telnyx, Twilio, Voxbone
+**Choix recommandé** : Telnyx
+**Décision validée** : Telnyx
+**Justification** : meilleur rapport prix/couverture FR + DPA dispo
+**Risques** : pas de POP HDS, à creuser
+**Sources** :
+- https://docs.livekit.io/...
+- https://community.livekit.io/t/.../...
+
+
+───────────────────────────────────────────────────────────────────────
+  docs/v1-scope.md — SPEC DÉTAILLÉE DU V1
+───────────────────────────────────────────────────────────────────────
+
+QU'EST-CE QUE C'EST ?
+La spec ultra-précise de ce qu'on construit en v1. Plus détaillé que
+le SCOPE V1 du CLAUDE.md (qui reste haut niveau).
+
+CONTIENT GÉNÉRALEMENT :
+- Liste exhaustive des supported intents
+- Liste exhaustive des unsupported intents
+- Hard boundaries (déclencheurs de transfert humain immédiat)
+- Escalation triggers
+- Success metrics chiffrés (seuils v1)
+- Baseline humaine à mesurer avant lancement
+- Stages de rollout (beachhead → adjacencies → program)
+- Plan de tests / scenarios d'eval
+
+QUAND LE REMPLIR ?
+En session 1, après avoir tranché le scope avec Claude Code +
+le RAG (notamment Vapi playbook chapitre 8 "Scoping Your First Agent").
+
+QUAND LE METTRE À JOUR ?
+- Quand on passe en v1.1, v2 (le doc est versionné par jalons)
+- Si un test révèle un trou dans la spec
+
+
+───────────────────────────────────────────────────────────────────────
+  docs/dpa-registry.md — REGISTRE RGPD
+───────────────────────────────────────────────────────────────────────
+
+QU'EST-CE QUE C'EST ?
+Le registre des sous-traitants et vendors qui traitent des données
+patient (PHI) côté infra. Obligation RGPD pour le responsable de
+traitement (toi).
+
+CONTIENT POUR CHAQUE VENDOR :
+- Nom du vendor
+- Service rendu (ex: STT)
+- Nature des données traitées (ex: audio, transcript)
+- Localisation des données (UE / hors UE)
+- Statut du DPA (signé / en cours / non requis)
+- Date de signature
+- Lien vers le DPA
+- Sous-traitants ultérieurs du vendor
+- Statut HDS si applicable
+- Politique de rétention chez le vendor
+
+QUAND L'ALIMENTER ?
+À chaque vendor ajouté à la stack en session 1 ou plus tard.
+
+QUAND LE METTRE À JOUR ?
+- Nouveau vendor
+- Changement de DPA
+- Changement de localisation des données
+- Ajout d'un sous-traitant chez un vendor existant
+
+
+───────────────────────────────────────────────────────────────────────
+  docs/runbooks/ — PROCÉDURES OPÉRATIONNELLES
+───────────────────────────────────────────────────────────────────────
+
+QU'EST-CE QUE C'EST ?
+Dossier qui contiendra plus tard les procédures pour exploiter l'agent
+en prod : "que faire si l'agent plante", "comment rollback un prompt",
+"comment couper le système pour un cabinet en cas de problème", etc.
+
+QUAND LE REMPLIR ?
+Pas en session 1. Plus tard, au moment du déploiement.
+
+
+───────────────────────────────────────────────────────────────────────
+  WORKFLOW TYPIQUE
+───────────────────────────────────────────────────────────────────────
+
+SESSION 1 (cadrage stack + cadrage produit, AVANT TOUT CODE)
+  1. Tu lances `claude` dans ce dossier
+  2. Claude Code lit CLAUDE.md automatiquement
+  3. Tu lui demandes de te guider dans le cadrage stack
+  4. Pour chaque composant, il interroge le RAG, propose 2-3 options,
+     recommande, attend ta validation
+  5. Tu valides → entrée dans decisions.md
+  6. Idem pour la spec v1 → entrée dans v1-scope.md
+  7. Vendors choisis → entrées dans dpa-registry.md
+
+QUAND SESSION 1 EST TERMINÉE :
+  - decisions.md complet (stack + archi + métriques)
+  - v1-scope.md complet (intents, boundaries, success criteria, baseline)
+  - dpa-registry.md à jour avec les vendors retenus
+  → On peut passer en phase scaffold (création du repo de code)
+
+SESSIONS SUIVANTES (build) :
+  - Tu lances `claude`
+  - Claude Code lit CLAUDE.md + decisions.md + v1-scope.md
+  - Il code en respectant les contraintes
+  - À chaque doute il interroge le RAG (livekit-rag MCP)
+  - À chaque décision non triviale il met à jour decisions.md
+  - Il te demande validation avant les changements structurels
+
+
+───────────────────────────────────────────────────────────────────────
+  RAPPEL : LE RAG EST UN OUTIL, PAS UNE VÉRITÉ
+───────────────────────────────────────────────────────────────────────
+
+Le RAG (livekit-rag MCP) sert à :
+- Trouver la bonne API LiveKit (corpus docs)
+- Trouver des retours de devs sur des bugs (corpus forum)
+- Trouver des frameworks produit (corpus vapi_book)
+
+Le RAG NE sert PAS à :
+- Valider une obligation légale (vérifier docs vendor officielles)
+- Valider un statut HDS (lire la certification du vendor)
+- Trancher entre 2 sources contradictoires (voir Source Hierarchy
+  dans CLAUDE.md)
+
+Le RAG est ton assistant de recherche. La décision finale, c'est toi
+(et la doc officielle vendor pour les sujets compliance).
+
+
+═══════════════════════════════════════════════════════════════════════
+  FIN DU GUIDE
+═══════════════════════════════════════════════════════════════════════
