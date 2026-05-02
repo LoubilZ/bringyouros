@@ -24,7 +24,7 @@ from livekit.agents import (
     text_transforms,
 )
 from livekit.agents.llm import function_tool
-from livekit.plugins import silero
+from livekit.plugins import elevenlabs, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 from mock_backend import verify_patient_identity as _verify_patient
@@ -43,6 +43,7 @@ PRATICIEN = "Dr Martin"
 CATEGORIE = "orthodontie"
 DATE_DEVIS = "le quinze avril"
 DEVIS_ID = os.getenv("DEVIS_ID", "1")
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "YxrwjAKoUKULGd0g8K9Y")
 
 # ---------------------------------------------------------------------------
 # System prompt — 5 sections (Vapi Ch. 12)
@@ -229,7 +230,14 @@ class DentalAgent(Agent):
     async def on_enter(self) -> None:
         logger.info(
             json.dumps(
-                {"event": "call_started", "call_id": self.call_id, "devis_id": DEVIS_ID},
+                {
+                    "event": "call_started",
+                    "call_id": self.call_id,
+                    "devis_id": DEVIS_ID,
+                    "tts_provider": "elevenlabs",
+                    "tts_model": "eleven_flash_v2_5",
+                    "tts_voice_id": ELEVENLABS_VOICE_ID,
+                },
                 ensure_ascii=False,
             )
         )
@@ -318,10 +326,10 @@ async def entrypoint(ctx: JobContext) -> None:
             model="openai/gpt-4.1-mini",
             extra_kwargs={"temperature": 0.0},
         ),
-        # --- TTS (§ 2) ---
-        tts=inference.TTS(
-            "cartesia/sonic-3",
-            voice="faa75703-00e3-4a57-9955-0703001e3231",  # Voice ID auditionnée
+        # --- TTS (§ 2) — ElevenLabs plugin direct (custom voice_id) ---
+        tts=elevenlabs.TTS(
+            model="eleven_flash_v2_5",
+            voice_id=ELEVENLABS_VOICE_ID,
             language="fr",
         ),
         # --- VAD (§ 4) ---

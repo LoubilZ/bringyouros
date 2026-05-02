@@ -1,2 +1,2 @@
-livekit-agents[silero,turn-detector]~=1.5
+livekit-agents[elevenlabs,silero,turn-detector]~=1.5
 python-dotenv~=1.1

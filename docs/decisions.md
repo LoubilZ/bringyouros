@@ -487,6 +487,45 @@ Non résolue.
 
 ---
 
+## 2026-05-02 — ElevenLabs WebSocket disconnect intermittent (#4676)
+
+**Contexte** :
+Le swap TTS Cartesia → ElevenLabs (plugin direct, `eleven_flash_v2_5`) expose le projet au bug GitHub [livekit/agents#4676](https://github.com/livekit/agents/issues/4676) : déconnexion WebSocket intermittente (`connection closed (status_code=-1)`) avec `eleven_flash_v2_5` et `eleven_turbo_v2_5`. Le fix partiel (keepalive PR #5139) est inclus dans v1.5.0+, mais des cas résiduels sont encore signalés. Un correctif communautaire existe (PR #4745, non mergé).
+
+**Options considérées** :
+- A. Ignorer pour la démo, configurer un fallback TTS en prod
+- B. Configurer un fallback TTS dès maintenant (Cartesia via `inference.TTS` en secondary)
+- C. Attendre la résolution upstream avant de passer en prod
+
+**Choix recommandé** :
+A — acceptable pour la démo (le bug est intermittent, pas systématique). En prod, un fallback TTS (option B) sera nécessaire.
+
+**Décision validée** :
+A pour la démo. B à implémenter avant prod.
+
+**Justification** :
+- Le bug est intermittent et partiellement mitigé par le keepalive (v1.5.0+)
+- La démo n'est pas exposée à un volume suffisant pour déclencher le bug fréquemment
+- Un fallback TTS en démo ajouterait de la complexité sans bénéfice immédiat
+
+**Risques** :
+- En démo, une déconnexion WebSocket couperait le TTS mid-appel → expérience dégradée
+- En prod, sans fallback → perte d'appels silencieuse
+
+**Questions ouvertes** :
+- Surveiller le merge de PR #4745 (fix communautaire)
+- En prod : implémenter fallback Cartesia (`inference.TTS("cartesia/sonic-3")`) comme secondary TTS
+
+**Sources** :
+- GitHub issue : [livekit/agents#4676](https://github.com/livekit/agents/issues/4676)
+- Fix partiel : PR #5139 (keepalive, mergé v1.5.0)
+- Fix communautaire : PR #4745 (non mergé)
+- Forum : [community.livekit.io/t/multylanguage-with-elevenlabs-not-working/706](https://community.livekit.io/t/multylanguage-with-elevenlabs-not-working/706) — confusion inference.TTS vs elevenlabs.TTS (pas un bug plugin)
+
+**Statut** : `ouvert` — acceptable démo, fallback TTS requis avant prod
+
+---
+
 ## Questions ouvertes transverses
 
 Les questions ci-dessous ne sont pas liées à une décision unique mais conditionnent plusieurs choix :
