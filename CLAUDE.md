@@ -373,7 +373,7 @@ Pour les flows patient-facing v1 :
 - pas de décision clinique
 - pas de scope creep conversationnel
 
-Toute hausse de température doit être justifi��e et validée. Ne jamais optimiser latency/cost au détriment de : sécurité, conformité, exactitude du statut RDV, expérience patient.
+Toute hausse de température doit être justifiée et validée. Ne jamais optimiser latency/cost au détriment de : sécurité, conformité, exactitude du statut RDV, expérience patient.
 
 ## Turn Detection & Interruptions
 
