@@ -338,10 +338,10 @@ async def entrypoint(ctx: JobContext) -> None:
             voice_id=ELEVENLABS_VOICE_ID,
             language="fr",
             voice_settings=VoiceSettings(
-                stability=0.5,
+                stability=0.7,
                 similarity_boost=0.75,
                 style=0.0,
-                speed=1.02,
+                speed=1.0,
                 use_speaker_boost=True,
             ),
         ),
