@@ -526,6 +526,92 @@ A pour la démo. B à implémenter avant prod.
 
 ---
 
+## 2026-05-02 — TTS swap Cartesia Sonic-3 → ElevenLabs Flash v2.5
+
+**Contexte** :
+Le choix initial de TTS (Cartesia Sonic-3 via `inference.TTS` gateway) ne supportait pas les voice_id custom. La voix "Lucie" (ElevenLabs, ID `YxrwjAKoUKULGd0g8K9Y`) a été auditionnée et correspond au persona consultatif santé : ton chaleureux, professionnel, non-commercial. Le swap nécessite le plugin direct `elevenlabs.TTS` (le gateway `inference.TTS` ne supporte pas les custom voice_id — confirmé forum LiveKit, ce n'est pas un bug).
+
+**Options considérées** :
+- A. Rester sur Cartesia Sonic-3 via inference gateway (voix stock)
+- B. ElevenLabs Flash v2.5 via plugin direct (custom voice_id Lucie)
+- C. ElevenLabs via inference gateway (limité aux voix stock ElevenLabs)
+
+**Décision validée** :
+B — ElevenLabs Flash v2.5 plugin direct avec voice_id Lucie.
+
+**Justification** :
+- `eleven_flash_v2_5` : support FR natif, ~75ms TTFB, recommandé pour real-time
+- Voice_id custom obligatoire pour matcher le persona (voix stock insuffisantes)
+- `voice_settings` hardcodés après audition : `stability=0.7, similarity_boost=0.75, style=0.0, speed=1.0, use_speaker_boost=True`
+- Bug WebSocket intermittent (#4676) documenté séparément, acceptable pour démo
+
+**Sources** :
+- Forum LiveKit : confusion `inference.TTS` vs `elevenlabs.TTS` (pas un bug)
+- RAG docs : `elevenlabs.TTS` constructor, `VoiceSettings` dataclass
+- Audition voix Lucie : validation subjective persona consultatif santé
+
+**Statut** : `résolu`
+
+---
+
+## 2026-05-02 — Endpointing min_delay 0.7 → 1.0
+
+**Contexte** :
+Lors des tests d'appel réels en français, l'agent coupait la parole aux patients qui cherchaient leurs mots ou hésitaient (pauses de réflexion naturelles en français). Le `min_delay` de 0.7s était trop agressif.
+
+**Options considérées** :
+- A. Garder 0.7s (valeur initiale docs LiveKit)
+- B. Augmenter à 1.0s
+- C. Augmenter à 1.5s
+
+**Décision validée** :
+B — min_delay 1.0s. Compromis entre respect des silences et réactivité perçue.
+
+**Justification** :
+- Observation en test : les patients francophones font des pauses de 0.8-1.2s quand ils réfléchissent (date de naissance, disponibilités)
+- 1.0s élimine les faux positifs de fin de tour sans introduire de latence perceptible sur les réponses courtes
+- Complété par 2 règles STYLE dans le prompt : respect des silences + attendre la réponse complète
+- À réévaluer sur un plus grand volume d'appels
+
+**Sources** :
+- Transcript d'appel test (DEVIS_ID=1, Jean Dupont)
+- RAG docs LiveKit : TurnHandlingOptions endpointing config
+
+**Statut** : `résolu`
+
+---
+
+## 2026-05-02 — Voice ID YxrwjAKoUKULGd0g8K9Y (Lucie)
+
+**Contexte** :
+Le choix de la voix TTS est critique pour la perception du voice agent par les patients. Une voix mal choisie (trop robotique, trop commerciale, trop médicale) fait raccrocher dès l'annonce. La voix doit matcher le persona "Dalia" : chaleureuse, professionnelle, consultative, neutre.
+
+**Options considérées** :
+- A. Voix stock ElevenLabs (Rachel, Bella, etc.)
+- B. Voix custom "Lucie" (ID `YxrwjAKoUKULGd0g8K9Y`)
+- C. Voix clonée à partir d'une secrétaire du cabinet pilote
+
+**Décision validée** :
+B — Lucie (`YxrwjAKoUKULGd0g8K9Y`).
+
+**Justification** :
+- Audition comparative : Lucie est la voix FR la plus naturelle et consultative parmi les options testées
+- Ton ni trop enthousiaste (commercial) ni trop froid (médical)
+- voice_settings affinés après test : stability 0.7 (articulation claire), speed 1.0 (rythme naturel)
+- L'option C (voix clonée) est envisageable en v2 si le cabinet le souhaite, mais nécessite consentement + qualité d'enregistrement
+
+**Risques** :
+- Voix propriétaire ElevenLabs → vendor lock-in TTS
+- Si Lucie est retirée du catalogue ElevenLabs → fallback nécessaire
+
+**Sources** :
+- ElevenLabs API `/v1/voices` : metadata voix Lucie
+- Audition subjective sur script d'annonce étape 1
+
+**Statut** : `résolu`
+
+---
+
 ## Questions ouvertes transverses
 
 Les questions ci-dessous ne sont pas liées à une décision unique mais conditionnent plusieurs choix :
