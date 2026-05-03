@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import uuid
+from datetime import date
 
 from dotenv import load_dotenv
 from livekit.agents import (
@@ -52,6 +53,23 @@ DEVIS_ID = os.getenv("DEVIS_ID", "1")
 ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "YxrwjAKoUKULGd0g8K9Y")
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+JOURS_FR = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+MOIS_FR = [
+    "", "janvier", "février", "mars", "avril", "mai", "juin",
+    "juillet", "août", "septembre", "octobre", "novembre", "décembre",
+]
+
+
+def format_french_date(d: date) -> str:
+    """Retourne une date en français lisible, ex : 'vendredi 2 mai 2026'."""
+    return f"{JOURS_FR[d.weekday()]} {d.day} {MOIS_FR[d.month]} {d.year}"
+
+
+DATE_AUJOURDHUI = format_french_date(date.today())
+
+# ---------------------------------------------------------------------------
 # System prompt — 5 sections (Vapi Ch. 12)
 # ---------------------------------------------------------------------------
 SYSTEM_PROMPT = f"""\
@@ -69,6 +87,12 @@ Ton rôle :
 - Répondre aux questions simples (organisationnelles, sur l'appel, sur toi)
 - Rediriger vers le cabinet UNIQUEMENT pour les sujets médicaux, \
 financiers détaillés, ou hors de ta compétence
+
+# DATE CONTEXT
+
+Nous sommes le {DATE_AUJOURDHUI}. Utilise cette date pour interpréter \
+les références temporelles du patient ("semaine prochaine", "mardi \
+prochain", "dans quinze jours", etc.).
 
 # STYLE
 
@@ -93,6 +117,10 @@ réponds humainement avant de revenir au flow.
 ou raisonnement interne.
 - N'invente jamais une information. Si tu ne sais pas, dis-le et \
 redirige vers le cabinet.
+- Respecte les silences du patient. S'il hésite ou réfléchit, laisse \
+un temps de pause avant de relancer. Ne comble pas les blancs.
+- Après une question, attends la réponse complète du patient avant de \
+réagir. Ne coupe pas un patient qui cherche ses mots.
 - En fin d'appel, après le récap et le "Merci, bonne journée", ne \
 JAMAIS ajouter "N'hésitez pas si vous avez d'autres questions" ni \
 invitation à prolonger. Si le patient remercie, réponds "Je vous en \
@@ -171,16 +199,32 @@ journée ?" Si le patient ne précise pas, accepte la réponse vague.
 Confirmation : "J'ai noté : [relire les créneaux exacts donnés par le \
 patient]."
 
+## Étape 5.5 — Questions
+"Avez-vous des questions avant qu'on termine ?"
+- Si oui → réponds si AUTORISÉ, redirige sinon (voir REDIRECTION). \
+Puis passe à l'étape 6.
+- Si non → passe à l'étape 6.
+- Si l'étape 5 a été sautée (intention ≠ oui), pose quand même cette \
+question avant de clôturer.
+
 ## Étape 6 — Clôture
 D'abord, fais un récap concret adapté aux slots collectés. Exemple si \
 mutuelle=non, intention=oui, disponibilites="mardi matin ou jeudi \
 après-midi" :
 "Pour résumer, vous n'avez pas encore eu de retour de votre mutuelle, \
 vous souhaitez procéder au traitement, et vous êtes disponible mardi \
-matin ou jeudi après-midi. Le cabinet vous recontactera pour finaliser."
+matin ou jeudi après-midi."
 Adapte selon les slots réels. Si intention = non ou reflechit, ne \
 mentionne pas les disponibilités.
+Après le récap, ajoute une confirmation explicite adaptée à la \
+situation :
+- Si intention = oui : "Le cabinet vous rappellera ou vous enverra un \
+message pour confirmer l'heure exacte du rendez-vous."
+- Si intention = non ou reflechit : "Le cabinet reste à votre \
+disposition si vous changez d'avis."
 Termine par : "Merci pour votre temps et bonne journée."
+Si le patient interrompt pendant le récap (correction, question), \
+écoute, traite, puis reprends le récap là où tu t'es arrêté.
 APRÈS avoir prononcé la phrase de fin, appelle complete_call avec \
 toutes les données collectées (valeurs finales). Ne génère AUCUN \
 nouveau message après l'appel du tool. Le tool est la toute dernière \
@@ -425,7 +469,7 @@ async def entrypoint(ctx: JobContext) -> None:
             turn_detection=MultilingualModel(),
             endpointing={
                 "mode": "dynamic",
-                "min_delay": 0.7,
+                "min_delay": 1.0,
                 "max_delay": 4.0,
                 "alpha": 0.85,
             },
