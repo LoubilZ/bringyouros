@@ -30,7 +30,7 @@ from livekit.agents import (
     text_transforms,
 )
 from livekit.agents.llm import function_tool
-from livekit.plugins import elevenlabs, silero
+from livekit.plugins import anthropic, elevenlabs, silero
 from livekit.plugins.elevenlabs import VoiceSettings
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
@@ -357,6 +357,8 @@ class DentalAgent(Agent):
                     "event": "call_started",
                     "call_id": self.call_id,
                     "devis_id": DEVIS_ID,
+                    "llm_provider": "anthropic",
+                    "llm_model": "claude-haiku-4-5-20251001",
                     "tts_provider": "elevenlabs",
                     "tts_model": "eleven_flash_v2_5",
                     "tts_voice_id": ELEVENLABS_VOICE_ID,
@@ -370,7 +372,7 @@ class DentalAgent(Agent):
     @function_tool()
     async def verify_patient_identity(
         self,
-        _context: RunContext,
+        context: RunContext,
         name: str,
         surname: str,
         dob: str,
@@ -382,6 +384,7 @@ class DentalAgent(Agent):
             surname: Nom de famille du patient.
             dob: Date de naissance au format AAAA-MM-JJ.
         """
+        context.disallow_interruptions()
         self.identity_attempts += 1
         result = await _verify_patient(
             name=name, surname=surname, dob=dob, devis_id=DEVIS_ID,
@@ -398,7 +401,7 @@ class DentalAgent(Agent):
     @function_tool()
     async def complete_call(
         self,
-        _context: RunContext,
+        context: RunContext,
         mutuelle_status: str = "non_collecte",
         intention: str = "non_collecte",
         disponibilites: str = "non_collecte",
@@ -412,6 +415,7 @@ class DentalAgent(Agent):
             disponibilites: Disponibilités patient (texte libre), non_applicable, ou non_collecte.
             escalade_motif: Motif d'escalade : aucun, echec_identite, urgence_vitale, demande_humain, ou indisponible.
         """
+        context.disallow_interruptions()
         self.mutuelle_status = mutuelle_status
         self.intention = intention
         self.disponibilites = disponibilites
@@ -444,10 +448,10 @@ async def entrypoint(ctx: JobContext) -> None:
     session = AgentSession(
         # --- STT (§ 1) ---
         stt=inference.STT(model="deepgram/nova-3-general", language="fr"),
-        # --- LLM (§ 3) ---
-        llm=inference.LLM(
-            model="openai/gpt-4.1-mini",
-            extra_kwargs={"temperature": 0.0},
+        # --- LLM (§ 3) — Anthropic plugin direct ---
+        llm=anthropic.LLM(
+            model="claude-haiku-4-5-20251001",
+            temperature=0.0,
         ),
         # --- TTS (§ 2) — ElevenLabs plugin direct (custom voice_id) ---
         tts=elevenlabs.TTS(

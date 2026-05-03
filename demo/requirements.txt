@@ -1,3 +1,3 @@
-livekit-agents[elevenlabs,silero,turn-detector]~=1.5
+livekit-agents[anthropic,elevenlabs,silero,turn-detector]~=1.5
 python-dotenv~=1.1
 truststore>=0.10
