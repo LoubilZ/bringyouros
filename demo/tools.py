@@ -1,4 +1,4 @@
-"""Call outcome recording and structured logging — démo J2."""
+"""Call outcome recording and structured logging — démo inbound RDV."""
 
 import json
 import logging
@@ -9,15 +9,14 @@ logger = logging.getLogger("dental-agent")
 
 @dataclass
 class CallOutcome:
-    """Bilan structuré d'un appel de suivi de devis."""
+    """Bilan structuré d'un appel de prise de RDV."""
 
     call_id: str
-    devis_id: str
-    identity_verified: bool
-    identity_attempts: int
-    mutuelle_status: str = "non_collecte"
-    intention: str = "non_collecte"
-    disponibilites: str = "non_collecte"
+    patient_name: str = "inconnu"
+    motif: str = "non_collecte"
+    rdv_id: str = "aucun"
+    rdv_date: str = "non_collecte"
+    rdv_heure: str = "non_collecte"
     escalade_motif: str = "aucun"
 
 
@@ -41,7 +40,7 @@ def log_slot(
 
 
 def log_call_outcome(outcome: CallOutcome) -> None:
-    """Log le CallOutcome complet en JSON structur��."""
+    """Log le CallOutcome complet en JSON structuré."""
     logger.info(
         json.dumps(
             {"event": "call_outcome", **asdict(outcome)},
