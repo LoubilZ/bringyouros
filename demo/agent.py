@@ -34,6 +34,7 @@ from livekit.plugins import anthropic, elevenlabs, silero
 from livekit.plugins.elevenlabs import VoiceSettings
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
+from calendar_backend import check_calendar as _check_calendar
 from mock_backend import verify_patient_identity as _verify_patient
 from tools import CallOutcome, log_call_outcome, log_slot
 
@@ -192,12 +193,19 @@ Si oui → étape 5. Sinon → étape 6.
 
 ## Étape 5 — Disponibilités (si intention = oui uniquement)
 "Quelles sont vos disponibilités pour un rendez-vous ?"
-Note un à trois créneaux (texte libre). Si la réponse est trop vague \
-(ex : "semaine prochaine", "bientôt"), demande UNE FOIS de préciser : \
-"D'accord, vous avez une préférence pour un jour ou un moment de la \
-journée ?" Si le patient ne précise pas, accepte la réponse vague.
-Confirmation : "J'ai noté : [relire les créneaux exacts donnés par le \
-patient]."
+Quand le patient donne une indication temporelle (ex : "semaine \
+prochaine", "mardi", "plutôt le matin"), appelle check_disponibilites \
+avec la plage correspondante pour vérifier les créneaux du praticien.
+Propose au patient deux ou trois créneaux disponibles : "Le Docteur \
+Martin est disponible [jour] à [heure] ou [jour] à [heure], est-ce \
+qu'un de ces créneaux vous conviendrait ?"
+Si aucun créneau ne convient au patient, élargis la plage d'une \
+semaine et repropose.
+Si aucun créneau n'est retourné par l'outil, dis : "Je n'ai pas de \
+créneau disponible sur cette période, souhaitez-vous qu'on regarde \
+une autre semaine ?"
+Note le créneau choisi par le patient dans les disponibilites.
+Confirmation : "Parfait, j'ai noté [jour] à [heure]."
 
 ## Étape 5.5 — Questions
 "Avez-vous des questions avant qu'on termine ?"
@@ -306,6 +314,15 @@ Avant d'appeler : dis "Je vérifie, un instant."
 Après le retour : confirme le résultat (match ou no_match). Ne confirme \
 JAMAIS l'identité avant le retour de l'outil.
 
+## check_disponibilites
+Étape 5. Paramètres : date_debut (AAAA-MM-JJ), date_fin (AAAA-MM-JJ).
+Convertis les indications du patient en plage de dates ISO. Exemples :
+- "semaine prochaine" → lundi au vendredi de la semaine suivante
+- "mardi" → le prochain mardi (date_debut = date_fin = ce mardi)
+- "plutôt le matin" → la semaine en cours, filtre matin dans ta réponse
+Avant d'appeler : dis "Je regarde les disponibilités, un instant."
+Après le retour : propose deux ou trois créneaux au patient.
+
 ## complete_call
 Étape 6 ou fin anticipée. Paramètres :
 - mutuelle_status : oui / non / ne_sait_pas (défaut : non_collecte)
@@ -397,6 +414,32 @@ class DentalAgent(Agent):
             value={"attempt": self.identity_attempts, "match": result.get("match", False)},
         )
         return result
+
+    @function_tool()
+    async def check_disponibilites(
+        self,
+        context: RunContext,
+        date_debut: str,
+        date_fin: str,
+    ) -> dict:
+        """Consulte les créneaux libres du praticien sur une période.
+
+        Args:
+            date_debut: Date de début au format AAAA-MM-JJ.
+            date_fin: Date de fin au format AAAA-MM-JJ.
+        """
+        context.disallow_interruptions()
+        slots = await _check_calendar(
+            praticien=PRATICIEN,
+            date_debut=date_debut,
+            date_fin=date_fin,
+        )
+        log_slot(
+            call_id=self.call_id,
+            slot_name="check_disponibilites",
+            value={"date_debut": date_debut, "date_fin": date_fin, "nb_creneaux": len(slots.get("creneaux", []))},
+        )
+        return slots
 
     @function_tool()
     async def complete_call(
@@ -500,7 +543,7 @@ async def entrypoint(ctx: JobContext) -> None:
         # --- Session params (§ 5) ---
         aec_warmup_duration=3.0,
         user_away_timeout=30.0,
-        max_tool_steps=3,
+        max_tool_steps=5,
     )
 
     await session.start(

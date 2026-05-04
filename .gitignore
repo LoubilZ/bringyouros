@@ -13,6 +13,9 @@ venv/
 .idea/
 .DS_Store
 
+# LiveKit Cloud
+livekit.toml
+
 # Logs
 *.log
 logs/
