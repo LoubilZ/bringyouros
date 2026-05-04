@@ -37,6 +37,7 @@ from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 from calendar_backend import check_calendar as _check_calendar
 from calendar_backend import create_rdv as _create_rdv
+from dashboard import attach_dashboard_handlers
 from tools import CallOutcome, log_call_outcome, log_slot
 
 load_dotenv()
@@ -85,6 +86,17 @@ Ton rôle :
 - Consulter l'agenda du praticien et proposer des créneaux
 - Confirmer et booker le rendez-vous
 - Rediriger vers le cabinet pour les sujets médicaux ou hors compétence
+
+# LANGUAGE
+
+Détecte la langue du patient dès sa première phrase. \
+Si le patient parle anglais, réponds intégralement en anglais. \
+Si le patient parle français, réponds intégralement en français. \
+Par défaut, commence en français. \
+Ne mélange jamais les deux langues dans un même tour. \
+Adapte ton vocabulaire et tes formulations à la langue détectée, \
+tout en gardant le même niveau de professionnalisme et de chaleur. \
+Les noms propres (Cabinet des Lilas, Dr Martin, Dalia) restent inchangés.
 
 # DATE CONTEXT
 
@@ -421,7 +433,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
     session = AgentSession(
         # --- STT ---
-        stt=inference.STT(model="deepgram/nova-3-general", language="fr"),
+        stt=inference.STT(model="deepgram/nova-3-general"),
         # --- LLM — Anthropic plugin direct ---
         llm=anthropic.LLM(
             model="claude-haiku-4-5-20251001",
@@ -431,7 +443,6 @@ async def entrypoint(ctx: JobContext) -> None:
         tts=elevenlabs.TTS(
             model="eleven_flash_v2_5",
             voice_id=ELEVENLABS_VOICE_ID,
-            language="fr",
             voice_settings=VoiceSettings(
                 stability=0.7,
                 similarity_boost=0.75,
@@ -477,6 +488,12 @@ async def entrypoint(ctx: JobContext) -> None:
         max_tool_steps=5,
     )
 
+    # Dashboard integration (dalia-call-backend Phase 6)
+    attach_dashboard_handlers(session, ctx)
+
+    # SIP inbound : connect d'abord pour recevoir l'appel entrant
+    await ctx.connect()
+
     await session.start(
         agent=DentalAgent(),
         room=ctx.room,
@@ -492,8 +509,6 @@ async def entrypoint(ctx: JobContext) -> None:
             ),
         ),
     )
-
-    await ctx.connect()
 
 
 if __name__ == "__main__":
