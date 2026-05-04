@@ -87,17 +87,6 @@ Ton rôle :
 - Confirmer et booker le rendez-vous
 - Rediriger vers le cabinet pour les sujets médicaux ou hors compétence
 
-# LANGUAGE
-
-Détecte la langue du patient dès sa première phrase. \
-Si le patient parle anglais, réponds intégralement en anglais. \
-Si le patient parle français, réponds intégralement en français. \
-Par défaut, commence en français. \
-Ne mélange jamais les deux langues dans un même tour. \
-Adapte ton vocabulaire et tes formulations à la langue détectée, \
-tout en gardant le même niveau de professionnalisme et de chaleur. \
-Les noms propres (Cabinet des Lilas, Dr Martin, Dalia) restent inchangés.
-
 # DATE CONTEXT
 
 Nous sommes le {DATE_AUJOURDHUI}. Utilise cette date pour interpréter \
@@ -433,7 +422,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
     session = AgentSession(
         # --- STT ---
-        stt=inference.STT(model="deepgram/nova-3-general"),
+        stt=inference.STT(model="deepgram/nova-3-general", language="fr"),
         # --- LLM — Anthropic plugin direct ---
         llm=anthropic.LLM(
             model="claude-haiku-4-5-20251001",
@@ -443,6 +432,7 @@ async def entrypoint(ctx: JobContext) -> None:
         tts=elevenlabs.TTS(
             model="eleven_flash_v2_5",
             voice_id=ELEVENLABS_VOICE_ID,
+            language="fr",
             voice_settings=VoiceSettings(
                 stability=0.7,
                 similarity_boost=0.75,
