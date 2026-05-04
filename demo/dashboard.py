@@ -59,8 +59,7 @@ def attach_dashboard_handlers(session, ctx) -> None:
     ``session = AgentSession(...)``.
     """
 
-    @session.on("conversation_item_added")
-    async def _on_item(ev):
+    async def _handle_item(ev):
         item = getattr(ev, "item", None)
         if not isinstance(item, ChatMessage):
             return
@@ -77,6 +76,10 @@ def attach_dashboard_handlers(session, ctx) -> None:
             },
             timeout=2.0,
         )
+
+    @session.on("conversation_item_added")
+    def _on_item(ev):
+        asyncio.create_task(_handle_item(ev))
 
     async def _shutdown():
         report_obj = (
