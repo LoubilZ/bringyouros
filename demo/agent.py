@@ -114,15 +114,12 @@ réponds "Je vous en prie, bonne journée" et stop.
 
 # DÉROULÉ DE L'APPEL
 
-## Étape 1 — Contexte cabinet (silencieux)
-Au tout début, AVANT de saluer, appelle cabinet_context avec le room_name \
-pour connaître le cabinet. Stocke le résultat en mémoire interne.
-
-## Étape 2 — Accueil
-Salue le patient avec le nom du cabinet retourné par cabinet_context :
+## Étape 1 — Accueil
+Le contexte cabinet est déjà chargé (voir section CABINET CONTEXT). \
+Salue immédiatement le patient avec le nom du cabinet :
 "[Nom du cabinet], bonjour, je suis Dalia. Comment puis-je vous aider ?"
 
-## Étape 3 — Identification du patient
+## Étape 2 — Identification du patient
 Si le patient veut prendre un rendez-vous :
 a. Demande prénom, nom de famille et date de naissance.
 b. Appelle find_patient avec ces infos.
@@ -138,12 +135,12 @@ informations pour une première consultation." Collecte prénom (épelé), \
 nom (épelé), date de naissance, téléphone. Relis chaque information \
 collectée pour confirmation.
 
-## Étape 4 — Motif
+## Étape 3 — Motif
 Demande le motif du rendez-vous. Si plusieurs dentists dans le cabinet \
 (cabinet_context.dentists.length > 1), demande aussi quel praticien \
 (ou si indifférent).
 
-## Étape 5 — Recherche de créneaux
+## Étape 4 — Recherche de créneaux
 Appelle find_available_slots avec duration_minutes selon le motif :
 - urgence : quinze minutes
 - controle / detartrage : trente minutes
@@ -152,7 +149,7 @@ PENDANT que le tool tourne, dis : "Une seconde, je regarde l'agenda..."
 Propose deux ou trois créneaux au patient.
 Si aucun créneau ne convient, élargis la plage d'une semaine et repropose.
 
-## Étape 6 — Proposition de RDV
+## Étape 5 — Proposition de RDV
 Quand le patient choisit un créneau, récapitule AVANT de proposer :
 "Je note : rendez-vous avec le [dentist] le [jour] à [heure] pour \
 [motif]. C'est bien ça ?"
@@ -164,14 +161,14 @@ reason_text, et patient_id OU patient_draft.
 RÈGLE D'OR : N'ANNONCE PAS "C'est confirmé" ou "Votre RDV est pris" \
 AVANT d'avoir reçu un succès du tool propose_appointment.
 
-## Étape 7 — Clôture
+## Étape 6 — Clôture
 Après succès de propose_appointment, dis : "C'est noté. Le praticien \
 va valider votre rendez-vous, vous serez confirmé avant la fin de la \
 journée. Bonne journée !"
 
 # KILL SWITCH
 
-Si cabinet_context retourne booking_enabled=false, ne propose PAS de \
+Si le CABINET CONTEXT indique booking activé = non, ne propose PAS de \
 rendez-vous. Tu peux toujours identifier le patient et lire son dossier, \
 mais à la fin, dis : "Un membre du cabinet vous rappelle dans la journée."
 
@@ -223,12 +220,6 @@ il vous en parlera en consultation." NE DEMANDE PAS le contenu.
 
 # TOOLS
 
-## cabinet_context
-Étape 1. Paramètre : room_name (string).
-Retourne : nom du cabinet, liste des dentists actifs, booking_enabled.
-Si la liste dentists a plus d'un élément, demande au patient quel \
-praticien il préfère AVANT d'appeler find_available_slots.
-
 ## find_patient
 Étape 3. Paramètres : room_name, first_name, last_name, birth_date (AAAA-MM-JJ).
 Retourne : match_type (exact/fuzzy/none) + liste de patients.
@@ -272,10 +263,34 @@ server.setup_fnc = prewarm
 # Agent — flow inbound prise de RDV (Phase 10)
 # ---------------------------------------------------------------------------
 class DentalAgent(Agent):
-    def __init__(self, room_name: str = "") -> None:
-        super().__init__(instructions=SYSTEM_PROMPT)
+    def __init__(self, room_name: str = "", cabinet_data: dict | None = None) -> None:
         self.call_id: str = str(uuid.uuid4())
         self.room_name: str = room_name
+        self.cabinet_data: dict = cabinet_data or {}
+
+        # Inject cabinet context into the prompt
+        cabinet_name = self.cabinet_data.get("cabinet_name", "Cabinet Dentaire")
+        dentists = self.cabinet_data.get("dentists", [])
+        booking_enabled = self.cabinet_data.get("booking_enabled", True)
+
+        dentists_info = ""
+        if len(dentists) == 1:
+            dentists_info = f"Le praticien du cabinet est {dentists[0].get('name', 'le docteur')}."
+        elif len(dentists) > 1:
+            names = ", ".join(d.get("name", "") for d in dentists)
+            dentists_info = (
+                f"Les praticiens du cabinet sont : {names}. "
+                f"Demande au patient quel praticien il préfère."
+            )
+
+        cabinet_context = (
+            f"\n\n# CABINET CONTEXT (pré-chargé)\n\n"
+            f"Nom du cabinet : {cabinet_name}\n"
+            f"{dentists_info}\n"
+            f"Booking activé : {'oui' if booking_enabled else 'non'}\n"
+        )
+
+        super().__init__(instructions=SYSTEM_PROMPT + cabinet_context)
 
     async def on_enter(self) -> None:
         logger.info(
@@ -298,38 +313,7 @@ class DentalAgent(Agent):
         await self.session.generate_reply(allow_interruptions=False)
 
     # ------------------------------------------------------------------
-    # Tool 1 — Cabinet context (silent, called before greeting)
-    # ------------------------------------------------------------------
-    @function_tool()
-    async def cabinet_context(
-        self,
-        context: RunContext,
-        room_name: str,
-    ) -> dict:
-        """Récupère la structure du cabinet au début de l'appel.
-
-        À appeler UNE SEULE FOIS avant le greeting. Renvoie le nom du cabinet,
-        la liste des dentists actifs, et booking_enabled.
-        Si la liste 'dentists' a plus d'un élément, demander au caller
-        quel dentist il préfère AVANT d'appeler find_available_slots.
-
-        Args:
-            room_name: Identifiant de la room LiveKit.
-        """
-        context.disallow_interruptions()
-        result = await call_dalia_tool("cabinet_context", {
-            "room_name": room_name or self.room_name,
-        })
-        logger.info(json.dumps({
-            "event": "tool_called",
-            "call_id": self.call_id,
-            "tool": "cabinet_context",
-            "result": result,
-        }, ensure_ascii=False))
-        return result
-
-    # ------------------------------------------------------------------
-    # Tool 2 — Find patient
+    # Tool 1 — Find patient
     # ------------------------------------------------------------------
     @function_tool()
     async def find_patient(
@@ -369,7 +353,7 @@ class DentalAgent(Agent):
         return result
 
     # ------------------------------------------------------------------
-    # Tool 3 — Patient summary
+    # Tool 2 — Patient summary
     # ------------------------------------------------------------------
     @function_tool()
     async def patient_summary(
@@ -403,7 +387,7 @@ class DentalAgent(Agent):
         return result
 
     # ------------------------------------------------------------------
-    # Tool 4 — Find available slots
+    # Tool 3 — Find available slots
     # ------------------------------------------------------------------
     @function_tool()
     async def find_available_slots(
@@ -452,7 +436,7 @@ class DentalAgent(Agent):
         return result
 
     # ------------------------------------------------------------------
-    # Tool 5 — Propose appointment
+    # Tool 4 — Propose appointment
     # ------------------------------------------------------------------
     @function_tool()
     async def propose_appointment(
@@ -599,8 +583,18 @@ async def entrypoint(ctx: JobContext) -> None:
     # SIP inbound : connect d'abord pour recevoir l'appel entrant
     await ctx.connect()
 
+    # Pre-fetch cabinet context to avoid silence at start
+    cabinet_data = await call_dalia_tool("cabinet_context", {
+        "room_name": ctx.room.name,
+    })
+    logger.info(json.dumps({
+        "event": "cabinet_context_prefetch",
+        "room_name": ctx.room.name,
+        "result": cabinet_data,
+    }, ensure_ascii=False))
+
     await session.start(
-        agent=DentalAgent(room_name=ctx.room.name),
+        agent=DentalAgent(room_name=ctx.room.name, cabinet_data=cabinet_data),
         room=ctx.room,
         room_options=room_io.RoomOptions(
             audio_input=room_io.AudioInputOptions(
