@@ -17,7 +17,8 @@ import json
 import logging
 import os
 import uuid
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 from livekit.agents import (
@@ -66,7 +67,9 @@ def format_french_date(d: date) -> str:
     return f"{JOURS_FR[d.weekday()]} {d.day} {MOIS_FR[d.month]} {d.year}"
 
 
-DATE_AUJOURDHUI = format_french_date(date.today())
+DATE_AUJOURDHUI = format_french_date(
+    datetime.now(ZoneInfo("Europe/Paris")).date()
+)
 
 # ---------------------------------------------------------------------------
 # System prompt — flow inbound prise de RDV (Phase 10)
