@@ -8,11 +8,14 @@ find_available_slots, propose_appointment.
 Part of openspec change `dalia-call-backend` Phase 10.
 """
 
-# Force SSL to use macOS system trust store (Python.org Python 3.13 workaround).
-# Must be set before any network library is imported (livekit, openai, httpx).
-import truststore
-truststore.inject_into_ssl()
+# Force SSL to use system trust store (Python.org Python 3.13 on macOS workaround).
+# Skip in Docker/Linux where it's not needed and can cause issues.
+import sys
+if sys.platform == "darwin":
+    import truststore
+    truststore.inject_into_ssl()
 
+import asyncio
 import json
 import logging
 import os
@@ -583,15 +586,15 @@ async def entrypoint(ctx: JobContext) -> None:
     # SIP inbound : connect d'abord pour recevoir l'appel entrant
     await ctx.connect()
 
-    # Pre-fetch cabinet context to avoid silence at start
-    cabinet_data = await call_dalia_tool("cabinet_context", {
-        "room_name": ctx.room.name,
-    })
-    logger.info(json.dumps({
-        "event": "cabinet_context_prefetch",
-        "room_name": ctx.room.name,
-        "result": cabinet_data,
-    }, ensure_ascii=False))
+    # Pre-fetch cabinet context (best-effort, 3s timeout)
+    try:
+        cabinet_data = await asyncio.wait_for(
+            call_dalia_tool("cabinet_context", {"room_name": ctx.room.name}),
+            timeout=3.0,
+        )
+    except Exception as e:
+        logger.warning(f"cabinet_context prefetch failed: {e}")
+        cabinet_data = {}
 
     await session.start(
         agent=DentalAgent(room_name=ctx.room.name, cabinet_data=cabinet_data),
