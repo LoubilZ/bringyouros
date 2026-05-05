@@ -1,11 +1,8 @@
-"""DentalOS Voice Agent — Inbound prise de RDV connecté au backend.
+"""DentalOS Voice Agent — Démo inbound prise de RDV.
 
-L'agent Dalia répond aux appels entrants, identifie le patient,
+L'agent Dalia répond aux appels entrants, collecte le motif et l'identité,
 consulte l'agenda via l'API DentalOS, et propose un RDV.
-5 function tools : cabinet_context, find_patient, patient_summary,
-find_available_slots, propose_appointment.
-
-Part of openspec change `dalia-call-backend` Phase 10.
+2 function tools : find_available_slots, propose_appointment.
 """
 
 # Force SSL to use system trust store (Python.org Python 3.13 on macOS workaround).
@@ -75,16 +72,16 @@ DATE_AUJOURDHUI = format_french_date(
 )
 
 # ---------------------------------------------------------------------------
-# System prompt — flow inbound prise de RDV (Phase 10)
+# System prompt — flow démo simplifié
 # ---------------------------------------------------------------------------
 SYSTEM_PROMPT = f"""\
 # IDENTITY
 
 Tu es Dalia, l'assistante téléphonique IA d'un cabinet dentaire. Tu reçois \
-un appel et tu dois aider le patient à prendre un rendez-vous ou à orienter \
-sa demande. Tu es chaleureuse, professionnelle et efficace. Tu es \
-transparente : si on te demande "vous êtes un humain ?" tu réponds \
-honnêtement "Non, je suis Dalia, l'assistante IA du cabinet."
+un appel et tu dois aider le patient à prendre un rendez-vous. Tu es \
+chaleureuse, professionnelle et efficace. Si on te demande "vous êtes un \
+humain ?" tu réponds honnêtement "Non, je suis Dalia, l'assistante IA du \
+cabinet."
 
 # DATE CONTEXT
 
@@ -122,66 +119,48 @@ Le contexte cabinet est déjà chargé (voir section CABINET CONTEXT). \
 Salue immédiatement le patient avec le nom du cabinet :
 "[Nom du cabinet], bonjour, je suis Dalia. Comment puis-je vous aider ?"
 
-## Étape 2 — Identification du patient
-Si le patient veut prendre un rendez-vous :
-a. Demande prénom, nom de famille et date de naissance.
-b. Appelle find_patient avec ces infos.
-c. Selon match_type :
-   - "exact" avec 1 résultat → reconnaît le patient ("Bonjour [prénom], \
-je vous retrouve.") et appelle patient_summary pour personnaliser.
-   - "exact" avec 2+ résultats → demande un critère désambiguïsant \
-(code postal ou téléphone).
-   - "fuzzy" → vérifie en lisant l'épellation à voix haute : \
-"C'est bien D-U-P-O-N-T ?"
-   - "none" → "Vous êtes patient chez nous ? Sinon je note vos \
-informations pour une première consultation." Collecte prénom (épelé), \
-nom (épelé), date de naissance, téléphone. Relis chaque information \
-collectée pour confirmation.
+## Étape 2 — Motif
+Demande le motif du rendez-vous. Si plusieurs praticiens dans le cabinet \
+(voir CABINET CONTEXT), demande aussi quel praticien (ou si indifférent).
 
-## Étape 3 — Motif
-Demande le motif du rendez-vous. Si plusieurs dentists dans le cabinet \
-(cabinet_context.dentists.length > 1), demande aussi quel praticien \
-(ou si indifférent).
+## Étape 3 — Identité
+Collecte les informations du patient :
+a. Demande le prénom.
+b. Demande le nom de famille. Si difficile à comprendre, demande d'épeler.
+c. Demande la date de naissance.
+C'est une simple collecte — pas de vérification en base.
 
 ## Étape 4 — Recherche de créneaux
 Appelle find_available_slots avec duration_minutes selon le motif :
 - urgence : quinze minutes
 - controle / detartrage : trente minutes
 - soins / prothese / autre : soixante minutes
-PENDANT que le tool tourne, dis : "Une seconde, je regarde l'agenda..."
+PENDANT que le tool tourne, dis : "Un instant, je consulte l'agenda..."
 Propose deux ou trois créneaux au patient.
 Si aucun créneau ne convient, élargis la plage d'une semaine et repropose.
 
 ## Étape 5 — Proposition de RDV
-Quand le patient choisit un créneau, récapitule AVANT de proposer :
-"Je note : rendez-vous avec le [dentist] le [jour] à [heure] pour \
-[motif]. C'est bien ça ?"
-- Si oui → dis "Je note votre demande" puis appelle propose_appointment \
-avec start_time du slot choisi, dentist_id du slot, reason_category, \
-reason_text, et patient_id OU patient_draft.
-- Si non → reviens à l'étape 5 pour reproposer.
+Quand le patient choisit un créneau, récapitule AVANT de confirmer :
+"Je récapitule : rendez-vous le [jour] à [heure] pour [motif], au nom \
+de [prénom nom]. C'est bien ça ?"
+- Si oui → appelle propose_appointment avec patient_draft (prénom, nom, \
+date de naissance) + start_time + reason_category + reason_text.
+- Si non → repropose d'autres créneaux.
 
 RÈGLE D'OR : N'ANNONCE PAS "C'est confirmé" ou "Votre RDV est pris" \
 AVANT d'avoir reçu un succès du tool propose_appointment.
 
 ## Étape 6 — Clôture
-Après succès de propose_appointment, dis : "C'est noté. Le praticien \
-va valider votre rendez-vous, vous serez confirmé avant la fin de la \
-journée. Bonne journée !"
-
-# KILL SWITCH
-
-Si le CABINET CONTEXT indique booking activé = non, ne propose PAS de \
-rendez-vous. Tu peux toujours identifier le patient et lire son dossier, \
-mais à la fin, dis : "Un membre du cabinet vous rappelle dans la journée."
+Après succès de propose_appointment : "C'est noté. Vous recevrez une \
+confirmation. Bonne journée !"
 
 # GESTION D'ERREURS
 
-- Si propose_appointment retourne slot_unavailable (409) : "Désolée, ce \
+- Si propose_appointment retourne slot_unavailable : "Désolée, ce \
 créneau vient d'être pris. En voici d'autres..." et appelle à nouveau \
 find_available_slots.
-- Si un tool échoue : "Je rencontre un petit souci technique. Je vais \
-noter votre demande et un membre du cabinet vous rappelle."
+- Si un tool échoue : "Je rencontre un petit souci technique. Un membre \
+du cabinet vous rappelle dans la journée."
 
 # GUARDRAILS
 
@@ -194,16 +173,15 @@ S'appliquent à CHAQUE tour, sans exception.
 - Estimation de tarif ou de remboursement mutuelle.
 - Invention d'information non confirmée par un outil ou par le patient.
 
-## AUTORISÉ — réponds naturellement
+## AUTORISÉ
 - Qui tu es : "Je suis Dalia, l'assistante IA du cabinet."
-- Questions pratiques sur le RDV (quoi apporter, etc.) : "Pensez \
-à apporter votre carte vitale et votre carte de mutuelle."
+- Questions pratiques : "Pensez à apporter votre carte vitale et votre \
+carte de mutuelle."
 
 ## REDIRECTION
-Pour les sujets médicaux, financiers détaillés, ou hors compétence :
-- "C'est une bonne question. Le praticien pourra vous répondre lors du \
+Pour les sujets médicaux, financiers, ou hors compétence :
+"C'est une bonne question. Le praticien pourra vous répondre lors du \
 rendez-vous."
-Toujours reprendre le flow après la redirection.
 
 ## Urgence vitale
 Difficulté à respirer/avaler, saignement important, perte de \
@@ -215,31 +193,18 @@ ou le cent-douze immédiatement."
 → "Je comprends tout à fait. Un membre du cabinet vous rappelle \
 dans la journée."
 
-## PII / CONFIDENTIALITÉ
-- patient_summary peut renvoyer des allergies — ne les répète au patient \
-que si pertinent à sa demande.
-- Si has_notes=true, dis : "Le praticien a laissé une note pour vous, \
-il vous en parlera en consultation." NE DEMANDE PAS le contenu.
-
 # TOOLS
 
-## find_patient
-Étape 3. Paramètres : room_name, first_name, last_name, birth_date (AAAA-MM-JJ).
-Retourne : match_type (exact/fuzzy/none) + liste de patients.
-
-## patient_summary
-Après identification. Paramètres : room_name, patient_id.
-Retourne : allergies, dernière visite, devis en attente, prochain RDV, has_notes.
-
 ## find_available_slots
-Étape 5. Paramètres : room_name, duration_minutes, dentist_id (ou null), \
-preferred_date_window (optionnel), max_results (optionnel).
+Paramètres : room_name, duration_minutes, dentist_id (ou vide), \
+preferred_date_start (opt), preferred_date_end (opt), max_results (opt).
 Retourne : liste de créneaux disponibles.
 
 ## propose_appointment
-Étape 6. Paramètres : room_name, dentist_id, patient_id OU patient_draft, \
-start_time, reason_category (enum : urgence/controle/detartrage/soins/prothese/autre), \
-reason_text, context (optionnel).
+Paramètres : room_name, dentist_id, start_time, reason_category \
+(urgence/controle/detartrage/soins/prothese/autre), reason_text, \
+patient_draft_first_name, patient_draft_last_name, \
+patient_draft_birth_date.
 Retourne : confirmation ou slot_unavailable.
 """
 
@@ -263,18 +228,18 @@ server.setup_fnc = prewarm
 
 
 # ---------------------------------------------------------------------------
-# Agent — flow inbound prise de RDV (Phase 10)
+# Agent — flow démo simplifié
 # ---------------------------------------------------------------------------
 class DentalAgent(Agent):
     def __init__(self, room_name: str = "", cabinet_data: dict | None = None) -> None:
         self.call_id: str = str(uuid.uuid4())
         self.room_name: str = room_name
         self.cabinet_data: dict = cabinet_data or {}
+        self.cabinet_id: str = self.cabinet_data.get("cabinet_id", "")
 
         # Inject cabinet context into the prompt
         cabinet_name = self.cabinet_data.get("cabinet_name", "Cabinet Dentaire")
         dentists = self.cabinet_data.get("dentists", [])
-        booking_enabled = self.cabinet_data.get("booking_enabled", True)
 
         dentists_info = ""
         if len(dentists) == 1:
@@ -290,7 +255,6 @@ class DentalAgent(Agent):
             f"\n\n# CABINET CONTEXT (pré-chargé)\n\n"
             f"Nom du cabinet : {cabinet_name}\n"
             f"{dentists_info}\n"
-            f"Booking activé : {'oui' if booking_enabled else 'non'}\n"
         )
 
         super().__init__(instructions=SYSTEM_PROMPT + cabinet_context)
@@ -302,9 +266,9 @@ class DentalAgent(Agent):
                     "event": "call_started",
                     "call_id": self.call_id,
                     "room_name": self.room_name,
-                    "flow": "inbound_rdv_phase10",
+                    "flow": "demo_rdv_simplifie",
                     "llm_provider": "anthropic",
-                    "llm_model": "claude-haiku-4-5-20251001",
+                    "llm_model": "claude-sonnet-4-20250514",
                     "tts_provider": "elevenlabs",
                     "tts_model": "eleven_flash_v2_5",
                     "tts_voice_id": ELEVENLABS_VOICE_ID,
@@ -312,85 +276,10 @@ class DentalAgent(Agent):
                 ensure_ascii=False,
             )
         )
-        # L'agent va appeler cabinet_context puis saluer (via le prompt)
         await self.session.generate_reply(allow_interruptions=False)
 
     # ------------------------------------------------------------------
-    # Tool 1 — Find patient
-    # ------------------------------------------------------------------
-    @function_tool()
-    async def find_patient(
-        self,
-        context: RunContext,
-        room_name: str,
-        first_name: str,
-        last_name: str,
-        birth_date: str,
-    ) -> dict:
-        """Identifie un patient existant via nom + prénom + date de naissance.
-
-        match_type='exact' avec 1 résultat → patient identifié.
-        match_type='exact' avec 2+ résultats → demander un critère de désambiguïsation.
-        match_type='fuzzy' → vérifier en lisant l'épellation à voix haute.
-        match_type='none' → collecter les infos verbalement pour un draft.
-
-        Args:
-            room_name: Identifiant de la room LiveKit.
-            first_name: Prénom du patient.
-            last_name: Nom de famille du patient.
-            birth_date: Date de naissance au format AAAA-MM-JJ.
-        """
-        context.disallow_interruptions()
-        result = await call_dalia_tool("find_patient", {
-            "room_name": room_name or self.room_name,
-            "first_name": first_name,
-            "last_name": last_name,
-            "birth_date": birth_date,
-        })
-        logger.info(json.dumps({
-            "event": "tool_called",
-            "call_id": self.call_id,
-            "tool": "find_patient",
-            "match_type": result.get("match_type"),
-        }, ensure_ascii=False))
-        return result
-
-    # ------------------------------------------------------------------
-    # Tool 2 — Patient summary
-    # ------------------------------------------------------------------
-    @function_tool()
-    async def patient_summary(
-        self,
-        context: RunContext,
-        room_name: str,
-        patient_id: str,
-    ) -> dict:
-        """Lit le dossier minimal du patient identifié.
-
-        Retourne : allergies, dernière visite, devis en attente, tasks pending,
-        prochain RDV, et un flag has_notes.
-        Si has_notes=true, le dentist a laissé une note clinique — NE PAS
-        demander le contenu au caller.
-
-        Args:
-            room_name: Identifiant de la room LiveKit.
-            patient_id: Identifiant du patient.
-        """
-        context.disallow_interruptions()
-        result = await call_dalia_tool("patient_summary", {
-            "room_name": room_name or self.room_name,
-            "patient_id": patient_id,
-        })
-        logger.info(json.dumps({
-            "event": "tool_called",
-            "call_id": self.call_id,
-            "tool": "patient_summary",
-            "patient_id": patient_id,
-        }, ensure_ascii=False))
-        return result
-
-    # ------------------------------------------------------------------
-    # Tool 3 — Find available slots
+    # Tool 1 — Find available slots
     # ------------------------------------------------------------------
     @function_tool()
     async def find_available_slots(
@@ -403,18 +292,15 @@ class DentalAgent(Agent):
         preferred_date_end: str = "",
         max_results: int = 5,
     ) -> dict:
-        """Trouve des créneaux libres pour une durée donnée.
-
-        Passer dentist_id vide si le caller n'a pas de préférence.
-        Fenêtre par défaut : 14 jours à partir d'aujourd'hui.
+        """Trouve des créneaux libres dans l'agenda du cabinet.
 
         Args:
             room_name: Identifiant de la room LiveKit.
-            duration_minutes: Durée souhaitée en minutes (15-180).
-            dentist_id: ID du dentist préféré, ou vide si indifférent.
+            duration_minutes: Durée souhaitée en minutes.
+            dentist_id: ID du praticien préféré, ou vide si indifférent.
             preferred_date_start: Début de la fenêtre (AAAA-MM-JJ), optionnel.
             preferred_date_end: Fin de la fenêtre (AAAA-MM-JJ), optionnel.
-            max_results: Nombre max de créneaux à retourner (1-20).
+            max_results: Nombre max de créneaux à retourner.
         """
         context.disallow_interruptions()
         payload: dict = {
@@ -422,6 +308,8 @@ class DentalAgent(Agent):
             "duration_minutes": duration_minutes,
             "max_results": max_results,
         }
+        if self.cabinet_id:
+            payload["cabinet_id"] = self.cabinet_id
         if dentist_id:
             payload["dentist_id"] = dentist_id
         if preferred_date_start and preferred_date_end:
@@ -439,7 +327,7 @@ class DentalAgent(Agent):
         return result
 
     # ------------------------------------------------------------------
-    # Tool 4 — Propose appointment
+    # Tool 2 — Propose appointment
     # ------------------------------------------------------------------
     @function_tool()
     async def propose_appointment(
@@ -450,35 +338,24 @@ class DentalAgent(Agent):
         start_time: str,
         reason_category: str,
         reason_text: str,
-        patient_id: str = "",
-        patient_draft_first_name: str = "",
-        patient_draft_last_name: str = "",
+        patient_draft_first_name: str,
+        patient_draft_last_name: str,
         patient_draft_birth_date: str = "",
-        patient_draft_phone: str = "",
-        context_notes: str = "",
     ) -> dict:
-        """Crée une proposition de RDV.
+        """Envoie la proposition de RDV sur la plateforme.
 
-        Utiliser patient_id pour un patient connu, ou les champs patient_draft_*
-        pour un nouveau patient. start_time vient d'un slot retourné par
-        find_available_slots. Le RDV est créé avec status='proposed' et le
-        dentist le valide depuis le dashboard.
-
-        RÈGLE D'OR : ne pas dire 'C'est noté' au caller AVANT que ce tool
-        ne retourne un succès.
+        Le RDV est créé avec status='proposed'. Le praticien valide ensuite.
+        Ne pas dire "C'est confirmé" au patient AVANT que ce tool retourne un succès.
 
         Args:
             room_name: Identifiant de la room LiveKit.
-            dentist_id: ID du dentist pour le RDV.
+            dentist_id: ID du praticien pour le RDV.
             start_time: Heure de début ISO du créneau choisi.
             reason_category: Catégorie (urgence/controle/detartrage/soins/prothese/autre).
             reason_text: Motif libre du patient.
-            patient_id: ID du patient connu (si identifié).
-            patient_draft_first_name: Prénom du nouveau patient.
-            patient_draft_last_name: Nom du nouveau patient.
-            patient_draft_birth_date: Date de naissance du nouveau patient (AAAA-MM-JJ).
-            patient_draft_phone: Téléphone du nouveau patient.
-            context_notes: Notes de contexte supplémentaires.
+            patient_draft_first_name: Prénom du patient.
+            patient_draft_last_name: Nom du patient.
+            patient_draft_birth_date: Date de naissance (AAAA-MM-JJ).
         """
         context.disallow_interruptions()
         payload: dict = {
@@ -487,20 +364,15 @@ class DentalAgent(Agent):
             "start_time": start_time,
             "reason_category": reason_category,
             "reason_text": reason_text,
-        }
-        if patient_id:
-            payload["patient_id"] = patient_id
-        elif patient_draft_first_name and patient_draft_last_name:
-            payload["patient_draft"] = {
+            "patient_draft": {
                 "first_name": patient_draft_first_name,
                 "last_name": patient_draft_last_name,
-            }
-            if patient_draft_birth_date:
-                payload["patient_draft"]["birth_date"] = patient_draft_birth_date
-            if patient_draft_phone:
-                payload["patient_draft"]["phone"] = patient_draft_phone
-        if context_notes:
-            payload["context"] = context_notes
+            },
+        }
+        if self.cabinet_id:
+            payload["cabinet_id"] = self.cabinet_id
+        if patient_draft_birth_date:
+            payload["patient_draft"]["birth_date"] = patient_draft_birth_date
 
         result = await call_dalia_tool("propose_appointment", payload)
         logger.info(json.dumps({
@@ -525,12 +397,13 @@ async def entrypoint(ctx: JobContext) -> None:
     session = AgentSession(
         # --- STT ---
         stt=inference.STT(model="deepgram/nova-3-general", language="fr"),
-        # --- LLM — Anthropic plugin direct ---
+        # --- LLM ---
         llm=anthropic.LLM(
-            model="claude-haiku-4-5-20251001",
+            model="claude-sonnet-4-20250514",
             temperature=0.0,
+            _strict_tool_schema=False,
         ),
-        # --- TTS — ElevenLabs plugin direct (custom voice_id) ---
+        # --- TTS ---
         tts=elevenlabs.TTS(
             model="eleven_flash_v2_5",
             voice_id=ELEVENLABS_VOICE_ID,
@@ -580,7 +453,7 @@ async def entrypoint(ctx: JobContext) -> None:
         max_tool_steps=10,
     )
 
-    # Dashboard integration (dalia-call-backend Phase 6)
+    # Dashboard integration
     attach_dashboard_handlers(session, ctx)
 
     # SIP inbound : connect d'abord pour recevoir l'appel entrant
