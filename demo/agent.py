@@ -1,8 +1,8 @@
 """DentalOS Voice Agent — Démo inbound prise de RDV.
 
 L'agent Dalia répond aux appels entrants, collecte le motif et l'identité,
-consulte l'agenda via l'API DentalOS, et propose un RDV.
-2 function tools : find_available_slots, propose_appointment.
+vérifie le patient, consulte l'agenda via l'API DentalOS, et propose un RDV.
+3 function tools : find_patient, find_available_slots, propose_appointment.
 """
 
 # Force SSL to use system trust store (Python.org Python 3.13 on macOS workaround).
@@ -124,38 +124,50 @@ Demande le motif du rendez-vous. Si plusieurs praticiens dans le cabinet \
 (voir CABINET CONTEXT), demande aussi quel praticien (ou si indifférent).
 
 ## Étape 3 — Identité
-Collecte les informations du patient :
-a. Demande le prénom.
-b. Demande le nom de famille. Si difficile à comprendre, demande d'épeler.
-c. Demande la date de naissance.
-C'est une simple collecte — pas de vérification en base.
+Demande tout en une seule phrase : "Puis-je avoir votre nom, prénom et \
+date de naissance ?" Si le patient ne donne pas tout, relance uniquement \
+sur ce qui manque.
 
-## Étape 4 — Recherche de créneaux
-Appelle find_available_slots avec duration_minutes selon le motif :
-- urgence : quinze minutes
-- controle / detartrage : trente minutes
-- soins / prothese / autre : soixante minutes
-PENDANT que le tool tourne, dis : "Un instant, je consulte l'agenda..."
-Propose deux ou trois créneaux au patient.
-Si aucun créneau ne convient, élargis la plage d'une semaine et repropose.
+## Étape 4 — Vérification patient
+Appelle find_patient avec le prénom, nom et date de naissance collectés. \
+- Si le patient est trouvé : "Parfait, j'ai bien retrouvé votre dossier."
+- Si non trouvé : "Je ne trouve pas votre dossier, ce n'est pas grave, \
+je vous enregistre comme nouveau patient."
+Dans les deux cas, continue au step suivant.
 
-## Étape 5 — Proposition de RDV
-Quand le patient choisit un créneau, récapitule AVANT de confirmer :
-"Je récapitule : rendez-vous le [jour] à [heure] pour [motif], au nom \
-de [prénom nom]. C'est bien ça ?"
+## Étape 5 — Recherche de créneaux
+Appelle find_available_slots avec le dentist_id. Le tool cherche \
+automatiquement les 14 prochains jours si tu ne précises pas de dates. \
+Tu peux préciser date_from et date_to si le patient a mentionné une \
+période spécifique.
+Pendant la recherche : "Un instant, je consulte l'agenda..."
+Parmi les créneaux retournés, propose au patient ceux qui correspondent \
+à sa préférence (ex : s'il a dit "mardi", ne propose que les mardis). \
+Propose deux ou trois créneaux maximum. Si aucun créneau ne correspond \
+à sa préférence dans les résultats, dis-le et propose les plus proches. \
+Si le patient veut une autre période, relance find_available_slots \
+avec les nouvelles dates.
+
+## Étape 6 — Récap et envoi
+Récapitule : "Je note : rendez-vous le [jour] à [heure] pour [motif], \
+au nom de [prénom nom]. C'est bien ça ?"
 - Si oui → appelle propose_appointment avec patient_draft (prénom, nom, \
-date de naissance) + start_time + reason_category + reason_text.
-- Si non → repropose d'autres créneaux.
+date de naissance) + reason_category + reason_text + start_time du \
+créneau choisi.
+- Si non → corrige ce qui ne va pas.
 
-RÈGLE D'OR : N'ANNONCE PAS "C'est confirmé" ou "Votre RDV est pris" \
-AVANT d'avoir reçu un succès du tool propose_appointment.
+RÈGLE D'OR : N'ANNONCE PAS "C'est confirmé" AVANT d'avoir reçu un \
+succès du tool propose_appointment.
 
-## Étape 6 — Clôture
-Après succès de propose_appointment : "C'est noté. Vous recevrez une \
-confirmation. Bonne journée !"
+## Étape 7 — Clôture
+Après succès de propose_appointment : "C'est noté. Le cabinet vous \
+recontactera pour confirmer le créneau. Bonne journée !"
 
 # GESTION D'ERREURS
 
+- Si find_available_slots ne retourne aucun créneau : "Je ne trouve pas \
+de créneau sur cette période. Souhaitez-vous que je cherche sur une \
+autre semaine ?"
 - Si propose_appointment retourne slot_unavailable : "Désolée, ce \
 créneau vient d'être pris. En voici d'autres..." et appelle à nouveau \
 find_available_slots.
@@ -195,17 +207,27 @@ dans la journée."
 
 # TOOLS
 
+## find_patient
+Vérifie si le patient existe dans la base. Paramètres : first_name, \
+last_name, birth_date (AAAA-MM-JJ).
+Retourne : patient trouvé (avec patient_id) ou non trouvé.
+
 ## find_available_slots
-Paramètres : room_name, duration_minutes, dentist_id (ou vide), \
-preferred_date_start (opt), preferred_date_end (opt), max_results (opt).
-Retourne : liste de créneaux disponibles.
+Recherche les créneaux disponibles dans l'agenda. Paramètres : \
+dentist_id (obligatoire), date_from (AAAA-MM-JJ, optionnel — défaut \
+aujourd'hui), date_to (AAAA-MM-JJ, optionnel — défaut dans 14 jours).
+Retourne : liste de créneaux disponibles avec date et heure. \
+N'hésite pas à laisser date_from et date_to vides pour chercher large, \
+puis filtre les résultats selon la préférence du patient.
 
 ## propose_appointment
-Paramètres : room_name, dentist_id, start_time, reason_category \
-(urgence/controle/detartrage/soins/prothese/autre), reason_text, \
-patient_draft_first_name, patient_draft_last_name, \
+Envoie la demande de RDV sur la plateforme. Paramètres : \
+dentist_id, start_time (copier EXACTEMENT la valeur "start" retournée \
+par find_available_slots, ne pas reformater), \
+reason_category (urgence/controle/detartrage/soins/prothese/autre), \
+reason_text, patient_draft_first_name, patient_draft_last_name, \
 patient_draft_birth_date.
-Retourne : confirmation ou slot_unavailable.
+Retourne : confirmation ou erreur.
 """
 
 # ---------------------------------------------------------------------------
@@ -243,11 +265,15 @@ class DentalAgent(Agent):
 
         dentists_info = ""
         if len(dentists) == 1:
-            dentists_info = f"Le praticien du cabinet est {dentists[0].get('name', 'le docteur')}."
-        elif len(dentists) > 1:
-            names = ", ".join(d.get("name", "") for d in dentists)
+            d = dentists[0]
             dentists_info = (
-                f"Les praticiens du cabinet sont : {names}. "
+                f"Le praticien du cabinet est {d.get('name', 'le docteur')} "
+                f"(dentist_id: {d.get('id', '')})."
+            )
+        elif len(dentists) > 1:
+            lines = [f"- {d.get('name', '')} (dentist_id: {d.get('id', '')})" for d in dentists]
+            dentists_info = (
+                f"Les praticiens du cabinet sont :\n" + "\n".join(lines) + "\n"
                 f"Demande au patient quel praticien il préfère."
             )
 
@@ -279,61 +305,115 @@ class DentalAgent(Agent):
         await self.session.generate_reply(allow_interruptions=False)
 
     # ------------------------------------------------------------------
-    # Tool 1 — Find available slots
+    # Tool — Find patient
     # ------------------------------------------------------------------
     @function_tool()
-    async def find_available_slots(
+    async def find_patient(
         self,
-        context: RunContext,
-        room_name: str,
-        duration_minutes: int,
-        dentist_id: str = "",
-        preferred_date_start: str = "",
-        preferred_date_end: str = "",
-        max_results: int = 5,
+        first_name: str,
+        last_name: str,
+        birth_date: str = "",
+        context: RunContext = None,
     ) -> dict:
-        """Trouve des créneaux libres dans l'agenda du cabinet.
+        """Vérifie si le patient existe dans la base du cabinet.
 
         Args:
-            room_name: Identifiant de la room LiveKit.
-            duration_minutes: Durée souhaitée en minutes.
-            dentist_id: ID du praticien préféré, ou vide si indifférent.
-            preferred_date_start: Début de la fenêtre (AAAA-MM-JJ), optionnel.
-            preferred_date_end: Fin de la fenêtre (AAAA-MM-JJ), optionnel.
-            max_results: Nombre max de créneaux à retourner.
+            first_name: Prénom du patient.
+            last_name: Nom de famille du patient.
+            birth_date: Date de naissance (AAAA-MM-JJ).
         """
-        context.disallow_interruptions()
+        logger.info(json.dumps({
+            "event": "tool_enter",
+            "call_id": self.call_id,
+            "tool": "find_patient",
+            "args": {"first_name": first_name, "last_name": last_name, "birth_date": birth_date},
+            "room_name": self.room_name,
+            "cabinet_id": self.cabinet_id,
+        }, ensure_ascii=False))
         payload: dict = {
-            "room_name": room_name or self.room_name,
-            "duration_minutes": duration_minutes,
-            "max_results": max_results,
+            "first_name": first_name,
+            "last_name": last_name,
+            "room_name": self.room_name,
         }
+        if birth_date:
+            payload["birth_date"] = birth_date
         if self.cabinet_id:
             payload["cabinet_id"] = self.cabinet_id
-        if dentist_id:
-            payload["dentist_id"] = dentist_id
-        if preferred_date_start and preferred_date_end:
-            payload["preferred_date_window"] = {
-                "start": preferred_date_start,
-                "end": preferred_date_end,
-            }
-        result = await call_dalia_tool("find_available_slots", payload)
+
+        result = await call_dalia_tool("find_patient", payload)
         logger.info(json.dumps({
-            "event": "tool_called",
+            "event": "tool_result",
             "call_id": self.call_id,
-            "tool": "find_available_slots",
-            "nb_slots": len(result.get("slots", [])),
+            "tool": "find_patient",
+            "result": result,
         }, ensure_ascii=False))
         return result
 
     # ------------------------------------------------------------------
-    # Tool 2 — Propose appointment
+    # Tool — Find available slots
+    # ------------------------------------------------------------------
+    @function_tool()
+    async def find_available_slots(
+        self,
+        dentist_id: str,
+        date_from: str = "",
+        date_to: str = "",
+        duration_minutes: int = 30,
+        context: RunContext = None,
+    ) -> dict:
+        """Recherche les créneaux disponibles dans l'agenda du praticien.
+
+        Si date_from ou date_to sont vides, cherche les 14 prochains jours.
+
+        Args:
+            dentist_id: ID du praticien.
+            date_from: Date de début de recherche (AAAA-MM-JJ). Vide = aujourd'hui.
+            date_to: Date de fin de recherche (AAAA-MM-JJ). Vide = dans 14 jours.
+            duration_minutes: Durée du RDV en minutes (défaut 30).
+        """
+        from datetime import timedelta
+        today = datetime.now(ZoneInfo("Europe/Paris")).date()
+        if not date_from:
+            date_from = today.isoformat()
+        if not date_to:
+            date_to = (today + timedelta(days=14)).isoformat()
+        logger.info(json.dumps({
+            "event": "tool_enter",
+            "call_id": self.call_id,
+            "tool": "find_available_slots",
+            "args": {"dentist_id": dentist_id, "date_from": date_from, "date_to": date_to, "duration_minutes": duration_minutes},
+            "room_name": self.room_name,
+            "cabinet_id": self.cabinet_id,
+        }, ensure_ascii=False))
+        if context:
+            context.disallow_interruptions()
+        payload: dict = {
+            "dentist_id": dentist_id,
+            "date_from": date_from,
+            "date_to": date_to,
+            "duration_minutes": duration_minutes,
+            "room_name": self.room_name,
+        }
+        if self.cabinet_id:
+            payload["cabinet_id"] = self.cabinet_id
+
+        result = await call_dalia_tool("find_available_slots", payload)
+        slots = result.get("slots", [])
+        logger.info(json.dumps({
+            "event": "tool_result",
+            "call_id": self.call_id,
+            "tool": "find_available_slots",
+            "nb_slots": len(slots),
+            "result": result,
+        }, ensure_ascii=False))
+        return result
+
+    # ------------------------------------------------------------------
+    # Tool — Propose appointment
     # ------------------------------------------------------------------
     @function_tool()
     async def propose_appointment(
         self,
-        context: RunContext,
-        room_name: str,
         dentist_id: str,
         start_time: str,
         reason_category: str,
@@ -341,25 +421,35 @@ class DentalAgent(Agent):
         patient_draft_first_name: str,
         patient_draft_last_name: str,
         patient_draft_birth_date: str = "",
+        context: RunContext = None,
     ) -> dict:
         """Envoie la proposition de RDV sur la plateforme.
 
         Le RDV est créé avec status='proposed'. Le praticien valide ensuite.
         Ne pas dire "C'est confirmé" au patient AVANT que ce tool retourne un succès.
+        Utilise le start_time exactement tel que retourné par find_available_slots.
 
         Args:
-            room_name: Identifiant de la room LiveKit.
             dentist_id: ID du praticien pour le RDV.
-            start_time: Heure de début ISO du créneau choisi.
+            start_time: Heure de début ISO du créneau choisi (copier tel quel depuis find_available_slots).
             reason_category: Catégorie (urgence/controle/detartrage/soins/prothese/autre).
             reason_text: Motif libre du patient.
             patient_draft_first_name: Prénom du patient.
             patient_draft_last_name: Nom du patient.
             patient_draft_birth_date: Date de naissance (AAAA-MM-JJ).
         """
-        context.disallow_interruptions()
+        logger.info(json.dumps({
+            "event": "tool_enter",
+            "call_id": self.call_id,
+            "tool": "propose_appointment",
+            "args": {"dentist_id": dentist_id, "start_time": start_time, "reason_category": reason_category},
+            "room_name": self.room_name,
+            "cabinet_id": self.cabinet_id,
+        }, ensure_ascii=False))
+        if context:
+            context.disallow_interruptions()
         payload: dict = {
-            "room_name": room_name or self.room_name,
+            "room_name": self.room_name,
             "dentist_id": dentist_id,
             "start_time": start_time,
             "reason_category": reason_category,
@@ -376,10 +466,10 @@ class DentalAgent(Agent):
 
         result = await call_dalia_tool("propose_appointment", payload)
         logger.info(json.dumps({
-            "event": "tool_called",
+            "event": "tool_result",
             "call_id": self.call_id,
             "tool": "propose_appointment",
-            "status": result.get("status"),
+            "result": result,
         }, ensure_ascii=False))
         return result
 
@@ -468,6 +558,11 @@ async def entrypoint(ctx: JobContext) -> None:
     except Exception as e:
         logger.warning(f"cabinet_context prefetch failed: {e}")
         cabinet_data = {}
+    logger.info(json.dumps({
+        "event": "cabinet_context_loaded",
+        "room_name": ctx.room.name,
+        "cabinet_data": cabinet_data,
+    }, ensure_ascii=False))
 
     await session.start(
         agent=DentalAgent(room_name=ctx.room.name, cabinet_data=cabinet_data),
