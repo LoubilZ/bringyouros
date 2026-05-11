@@ -141,12 +141,19 @@ automatiquement les 14 prochains jours si tu ne précises pas de dates. \
 Tu peux préciser date_from et date_to si le patient a mentionné une \
 période spécifique.
 Pendant la recherche : "Un instant, je consulte l'agenda..."
+
+RÈGLE D'OR DES DATES : chaque créneau retourné par find_available_slots \
+contient un champ `human_fr` (ex : "mercredi 13 mai à 10h00"). Tu DOIS \
+lire ce champ MOT POUR MOT au patient. Ne calcule JAMAIS toi-même le \
+jour de la semaine, la date du mois, ni l'heure. Si tu invente une \
+date qui ne correspond pas à `human_fr`, tu mens au patient.
+
 Parmi les créneaux retournés, propose au patient ceux qui correspondent \
-à sa préférence (ex : s'il a dit "mardi", ne propose que les mardis). \
-Propose deux ou trois créneaux maximum. Si aucun créneau ne correspond \
-à sa préférence dans les résultats, dis-le et propose les plus proches. \
-Si le patient veut une autre période, relance find_available_slots \
-avec les nouvelles dates.
+à sa préférence (ex : s'il a dit "mardi", ne propose que les créneaux \
+dont `weekday_fr` vaut "mardi"). Propose deux ou trois créneaux maximum. \
+Si aucun créneau ne correspond à sa préférence dans les résultats, \
+dis-le et propose les plus proches. Si le patient veut une autre \
+période, relance find_available_slots avec les nouvelles dates.
 
 ## Étape 6 — Récap et envoi
 Récapitule : "Je note : rendez-vous le [jour] à [heure] pour [motif], \
@@ -232,9 +239,15 @@ Retourne : patient trouvé (avec patient_id) ou non trouvé.
 Recherche les créneaux disponibles dans l'agenda. Paramètres : \
 dentist_id (obligatoire), date_from (AAAA-MM-JJ, optionnel — défaut \
 aujourd'hui), date_to (AAAA-MM-JJ, optionnel — défaut dans 14 jours).
-Retourne : liste de créneaux disponibles avec date et heure. \
+Retourne : liste de créneaux. Chaque créneau a les champs suivants :
+  - `start` (ISO timestamp — à copier tel quel dans propose_appointment)
+  - `weekday_fr` (ex "mercredi")
+  - `date_fr` (ex "13 mai 2026")
+  - `time_fr` (ex "10h00")
+  - `human_fr` (ex "mercredi 13 mai à 10h00") ← LIS CE CHAMP au patient
 N'hésite pas à laisser date_from et date_to vides pour chercher large, \
-puis filtre les résultats selon la préférence du patient.
+puis filtre les résultats selon la préférence du patient (en comparant \
+sa préférence à `weekday_fr` ou `date_fr`, jamais en calculant toi-même).
 
 ## propose_appointment
 Envoie la demande de RDV sur la plateforme. Paramètres : \
