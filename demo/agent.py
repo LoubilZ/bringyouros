@@ -238,7 +238,21 @@ Retourne : patient trouvé (avec patient_id) ou non trouvé.
 ## find_available_slots
 Recherche les créneaux disponibles dans l'agenda. Paramètres : \
 dentist_id (obligatoire), date_from (AAAA-MM-JJ, optionnel — défaut \
-aujourd'hui), date_to (AAAA-MM-JJ, optionnel — défaut dans 14 jours).
+aujourd'hui), date_to (AAAA-MM-JJ, optionnel — défaut dans 14 jours), \
+time_of_day ("morning" | "afternoon" | "evening" | vide).
+
+🚨 RÈGLE CRITIQUE — time_of_day : si le patient dit "matin", passe \
+time_of_day="morning". S'il dit "après-midi", passe time_of_day=\
+"afternoon". S'il dit "fin de journée" / "soir", passe \
+time_of_day="evening". JAMAIS de filtrage côté toi — le serveur fait \
+le filtrage. Si tu ignores ce param, tu vas proposer des créneaux \
+matin alors que le patient veut l'après-midi.
+
+Si find_available_slots renvoie 0 créneau avec un time_of_day donné, \
+dis au patient "Le docteur n'a plus de créneau [matin/après-midi/soir] \
+ce jour-là. Voulez-vous un autre jour, ou un autre créneau horaire ?" \
+NE BASCULE JAMAIS sur un autre créneau horaire sans demander.
+
 Retourne : liste de créneaux. Chaque créneau a les champs suivants :
   - `start` (ISO timestamp — à copier tel quel dans propose_appointment)
   - `weekday_fr` (ex "mercredi")
@@ -388,6 +402,7 @@ class DentalAgent(Agent):
         date_from: str = "",
         date_to: str = "",
         duration_minutes: int = 30,
+        time_of_day: str = "",
         context: RunContext = None,
     ) -> dict:
         """Recherche les créneaux disponibles dans l'agenda du praticien.
@@ -399,6 +414,10 @@ class DentalAgent(Agent):
             date_from: Date de début de recherche (AAAA-MM-JJ). Vide = aujourd'hui.
             date_to: Date de fin de recherche (AAAA-MM-JJ). Vide = dans 14 jours.
             duration_minutes: Durée du RDV en minutes (défaut 30).
+            time_of_day: Filtre horaire — "morning" (matin avant 13h), "afternoon"
+                (après-midi 13h-17h), "evening" (soir 17h+), ou vide pour toute la
+                journée. À renseigner OBLIGATOIREMENT si le patient a dit "matin",
+                "après-midi", ou "fin de journée / soir".
         """
         from datetime import timedelta
         today = datetime.now(ZoneInfo("Europe/Paris")).date()
@@ -410,7 +429,7 @@ class DentalAgent(Agent):
             "event": "tool_enter",
             "call_id": self.call_id,
             "tool": "find_available_slots",
-            "args": {"dentist_id": dentist_id, "date_from": date_from, "date_to": date_to, "duration_minutes": duration_minutes},
+            "args": {"dentist_id": dentist_id, "date_from": date_from, "date_to": date_to, "duration_minutes": duration_minutes, "time_of_day": time_of_day or None},
             "room_name": self.room_name,
             "cabinet_id": self.cabinet_id,
         }, ensure_ascii=False))
@@ -423,6 +442,8 @@ class DentalAgent(Agent):
             "duration_minutes": duration_minutes,
             "room_name": self.room_name,
         }
+        if time_of_day in ("morning", "afternoon", "evening"):
+            payload["time_of_day"] = time_of_day
         if self.cabinet_id:
             payload["cabinet_id"] = self.cabinet_id
 
